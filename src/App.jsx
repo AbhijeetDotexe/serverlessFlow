@@ -7,8 +7,10 @@ import Home from './pages/Home';
 import CreateFunction from './pages/CreateFunction';
 import Functions from './pages/Functions';
 import Logs from './pages/Logs';
+import Auth from './pages/Auth';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { FunctionsProvider } from './contexts/FunctionsContext';
+import { SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
 
 function App() {
   const [currentPath, setCurrentPath] = useState('/');
@@ -22,7 +24,8 @@ function App() {
       <FunctionsProvider>
         <Router>
           <div className="min-h-screen bg-gradient-to-br from-slate-50 via-primary-50 to-accent-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 transition-all duration-500 relative overflow-hidden">
-            {/* Animated background elements */}
+            
+            {/* Background */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
               <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-r from-primary-400/20 to-accent-400/20 rounded-full blur-3xl animate-float"></div>
               <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-r from-accent-400/20 to-success-400/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }}></div>
@@ -37,17 +40,45 @@ function App() {
                 initial={{ opacity: 0, y: 30, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -30, scale: 0.95 }}
-                transition={{ 
-                  duration: 0.5,
-                  ease: [0.25, 0.46, 0.45, 0.94]
-                }}
+                transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
                 className="pt-16 relative z-10"
               >
                 <Routes>
+                  {/* Auth routes */}
+                  <Route path="/sign-in/*" element={<Auth />} />
+                  <Route path="/sign-up/*" element={<Auth />} />
+
+                  {/* Public route */}
                   <Route path="/" element={<Home />} />
-                  <Route path="/create" element={<CreateFunction />} />
-                  <Route path="/functions" element={<Functions />} />
-                  <Route path="/logs" element={<Logs />} />
+
+                  {/* Protected routes */}
+                  <Route
+                    path="/create"
+                    element={
+                      <>
+                        <SignedIn><CreateFunction /></SignedIn>
+                        <SignedOut><RedirectToSignIn /></SignedOut>
+                      </>
+                    }
+                  />
+                  <Route
+                    path="/functions"
+                    element={
+                      <>
+                        <SignedIn><Functions /></SignedIn>
+                        <SignedOut><RedirectToSignIn /></SignedOut>
+                      </>
+                    }
+                  />
+                  <Route
+                    path="/logs"
+                    element={
+                      <>
+                        <SignedIn><Logs /></SignedIn>
+                        <SignedOut><RedirectToSignIn /></SignedOut>
+                      </>
+                    }
+                  />
                 </Routes>
               </motion.main>
             </AnimatePresence>

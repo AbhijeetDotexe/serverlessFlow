@@ -1,57 +1,76 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Search, Download, Copy, CheckCircle, Terminal, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, Download, Copy, CheckCircle, Terminal, Loader2, RefreshCw } from 'lucide-react';
 
 const Logs = () => {
   const [searchParams] = useSearchParams();
   const [activationId, setActivationId] = useState(searchParams.get('id') || '');
-  const [logs, setLogs] = useState('');
+  const [activations, setActivations] = useState([]);
+  const [selectedLogs, setSelectedLogs] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingActivations, setIsLoadingActivations] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [typewriterText, setTypewriterText] = useState('');
 
   useEffect(() => {
+    fetchActivations();
     if (searchParams.get('id')) {
+      setActivationId(searchParams.get('id'));
       fetchLogs(searchParams.get('id'));
     }
   }, [searchParams]);
 
-  useEffect(() => {
-    if (logs && logs !== typewriterText) {
-      setTypewriterText('');
-      let index = 0;
-      const timer = setInterval(() => {
-        if (index < logs.length) {
-          setTypewriterText(logs.substring(0, index + 1));
-          index++;
-        } else {
-          clearInterval(timer);
-        }
-      }, 10);
+  const fetchActivations = async () => {
+    setIsLoadingActivations(true);
+    try {
+      const response = await fetch('http://localhost:3000/project/logs');
+      const data = await response.json();
+      console.log("Logs API response: ", data);
 
-      return () => clearInterval(timer);
+      // Use the correct key from your API response
+      setActivations(data.logs || []);
+    } catch (error) {
+      console.error('Error fetching activations:', error);
+    } finally {
+      setIsLoadingActivations(false);
     }
-  }, [logs]);
+  };
 
   const fetchLogs = async (id) => {
-    setIsLoading(true);
-    setLogs('');
-    setTypewriterText('');
+    if (selectedLogs[id]) {
+      setSelectedLogs(prev => {
+        const newLogs = { ...prev };
+        delete newLogs[id];
+        return newLogs;
+      });
+      return;
+    }
 
+    setIsLoading(true);
     try {
-      const response = await fetch(`/logs/${id}`);
+      const response = await fetch(`http://localhost:3000/logs/${id}`);
       const data = await response.json();
       
-      if (data.logs) {
-        setLogs(data.logs);
-      } else if (data.error) {
-        setLogs(`Error: ${data.error}`);
+      let logsContent;
+      if (data.logs && typeof data.logs === 'object' && data.logs.logs && Array.isArray(data.logs.logs)) {
+        logsContent = data.logs.logs.join('\n');
+      } else if (Array.isArray(data.logs)) {
+        logsContent = data.logs.join('\n');
+      } else if (typeof data.logs === 'string') {
+        logsContent = data.logs;
       } else {
-        setLogs('No logs found for this activation ID');
+        logsContent = `No logs found for activation ID: ${id}\nRaw response: ${JSON.stringify(data, null, 2)}`;
       }
+      
+      setSelectedLogs(prev => ({
+        ...prev,
+        [id]: logsContent
+      }));
     } catch (error) {
-      setLogs(`Error fetching logs: ${error.message}`);
+      setSelectedLogs(prev => ({
+        ...prev,
+        [id]: `Error fetching logs: ${error.message}`
+      }));
     } finally {
       setIsLoading(false);
     }
@@ -63,7 +82,7 @@ const Logs = () => {
     }
   };
 
-  const copyLogs = async () => {
+  const copyLogs = async (logs) => {
     try {
       await navigator.clipboard.writeText(logs);
       setCopied(true);
@@ -73,16 +92,43 @@ const Logs = () => {
     }
   };
 
-  const downloadLogs = () => {
+  const downloadLogs = (logs, id) => {
     const blob = new Blob([logs], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `logs-${activationId}-${new Date().toISOString()}.txt`;
+    a.download = `logs-${id}-${new Date().toISOString()}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleString();
+  };
+
+  const formatLogDisplay = (logs) => {
+    if (!logs) return 'No logs available';
+    
+    return logs.split('\n').map((line, index) => {
+      let className = 'text-success-400';
+      if (line.includes('ERROR') || line.includes('error') || line.includes('Error')) {
+        className = 'text-error-400';
+      } else if (line.includes('WARN') || line.includes('warn') || line.includes('Warning')) {
+        className = 'text-warning-400';
+      } else if (line.includes('INFO') || line.includes('info')) {
+        className = 'text-info-400';
+      } else if (line.includes('DEBUG') || line.includes('debug')) {
+        className = 'text-gray-400';
+      }
+      
+      return (
+        <div key={index} className={className}>
+          {line}
+        </div>
+      );
+    });
   };
 
   return (
@@ -104,7 +150,7 @@ const Logs = () => {
         </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Search Section */}
+          {/* Sidebar */}
           <motion.div
             initial={{ opacity: 0, x: -30, scale: 0.95 }}
             animate={{ opacity: 1, x: 0, scale: 1 }}
@@ -112,11 +158,22 @@ const Logs = () => {
             className="lg:col-span-1"
           >
             <div className="bg-gradient-to-br from-white/60 to-gray-50/60 dark:from-gray-800/60 dark:to-gray-900/60 backdrop-blur-xl rounded-3xl p-6 border border-white/20 dark:border-gray-700/30 sticky top-24 shadow-xl hover:shadow-2xl transition-all duration-500">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-                Search Logs
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                  Search Logs
+                </h2>
+                <motion.button
+                  onClick={fetchActivations}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="p-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                >
+                  <RefreshCw className={`h-5 w-5 ${isLoadingActivations ? 'animate-spin' : ''}`} />
+                </motion.button>
+              </div>
               
               <div className="space-y-4">
+                {/* Search Box */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Activation ID
@@ -131,6 +188,7 @@ const Logs = () => {
                   />
                 </div>
 
+                {/* Fetch Button */}
                 <motion.button
                   onClick={handleSearch}
                   disabled={!activationId.trim() || isLoading}
@@ -138,54 +196,72 @@ const Logs = () => {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative flex items-center space-x-2">
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      <span>Searching...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Search className="h-5 w-5" />
-                      <span>Fetch Logs</span>
-                    </>
-                  )}
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <span>Searching...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Search className="h-5 w-5" />
+                        <span>Fetch Logs</span>
+                      </>
+                    )}
                   </div>
                 </motion.button>
 
-                {logs && (
-                  <div className="flex space-x-2">
-                    <motion.button
-                      onClick={copyLogs}
-                      className="flex-1 bg-gradient-to-r from-success-100 to-success-200 dark:from-success-900/30 dark:to-success-800/30 hover:from-success-200 hover:to-success-300 dark:hover:from-success-800/50 dark:hover:to-success-700/50 text-success-700 dark:text-success-300 font-medium py-2 px-4 rounded-xl transition-all duration-300 flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl"
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      {copied ? (
-                        <CheckCircle className="h-4 w-4" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                      <span>{copied ? 'Copied!' : 'Copy'}</span>
-                    </motion.button>
-
-                    <motion.button
-                      onClick={downloadLogs}
-                      className="flex-1 bg-gradient-to-r from-primary-100 to-primary-200 dark:from-primary-900/30 dark:to-primary-800/30 hover:from-primary-200 hover:to-primary-300 dark:hover:from-primary-800/50 dark:hover:to-primary-700/50 text-primary-700 dark:text-primary-300 font-medium py-2 px-4 rounded-xl transition-all duration-300 flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl"
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      <Download className="h-4 w-4" />
-                      <span>Download</span>
-                    </motion.button>
+                {/* Recent Activations */}
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Recent Activations
+                  </h3>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {isLoadingActivations ? (
+                      <div className="text-center py-4">
+                        <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary-600" />
+                      </div>
+                    ) : activations.length === 0 ? (
+                      <p className="text-gray-500 text-sm text-center py-4">
+                        No activations found
+                      </p>
+                    ) : (
+                      activations.map((activation) => (
+                        <motion.div
+                          key={activation._id}
+                          whileHover={{ scale: 1.02 }}
+                          className="p-3 bg-white/50 dark:bg-gray-700/50 rounded-xl border border-gray-200/50 dark:border-gray-600/50 cursor-pointer hover:shadow-md transition-all"
+                          onClick={() => {
+                            setActivationId(activation.activationId);
+                            fetchLogs(activation.activationId);
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                {activation.activationId}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                {activation.uuid}
+                              </p>
+                              <p className="text-xs text-gray-400 dark:text-gray-500">
+                                {formatDate(activation.createdAt)}
+                              </p>
+                            </div>
+                            {selectedLogs[activation.activationId] && (
+                              <div className="w-2 h-2 bg-success-500 rounded-full ml-2"></div>
+                            )}
+                          </div>
+                        </motion.div>
+                      ))
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             </div>
           </motion.div>
 
-          {/* Logs Display Section */}
+          {/* Main Logs Viewer */}
           <motion.div
             initial={{ opacity: 0, x: 30, scale: 0.95 }}
             animate={{ opacity: 1, x: 0, scale: 1 }}
@@ -193,111 +269,86 @@ const Logs = () => {
             className="lg:col-span-2"
           >
             <div className="bg-gradient-to-br from-gray-900 to-black dark:from-gray-800 dark:to-gray-900 rounded-3xl p-6 border border-gray-700/50 shadow-2xl hover:shadow-3xl transition-all duration-500 relative overflow-hidden">
-              {/* Terminal glow effect */}
-              <div className="absolute inset-0 bg-gradient-to-r from-success-500/5 via-primary-500/5 to-accent-500/5 opacity-50 animate-pulse-slow"></div>
-              
               <div className="relative">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-2">
-                  <motion.div
-                    animate={{ rotate: [0, 360] }}
-                    transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                  >
-                    <Terminal className="h-5 w-5 text-success-400" />
-                  </motion.div>
-                  <span className="text-success-400 font-semibold">Function Logs</span>
-                </div>
-                {activationId && (
-                  <span className="text-xs text-gray-400 font-mono bg-gray-800/80 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-gray-700/50">
-                    {activationId}
-                  </span>
-                )}
-              </div>
-
-              <div className="bg-black/90 backdrop-blur-sm rounded-2xl p-6 min-h-[500px] font-mono text-sm relative overflow-hidden border border-gray-800/50 shadow-inner">
-                {/* Matrix-like background effect */}
-                <div className="absolute inset-0 opacity-10">
-                  <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-success-500/20 via-transparent to-transparent"></div>
-                </div>
-                
-                {!logs && !isLoading && (
-                  <motion.div 
-                    className="text-center py-20"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.5 }}
-                  >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-2">
                     <motion.div
-                      animate={{ 
-                        scale: [1, 1.1, 1],
-                        rotate: [0, 5, -5, 0]
-                      }}
-                      transition={{ 
-                        duration: 3,
-                        repeat: Infinity,
-                        ease: "easeInOut"
-                      }}
+                      animate={{ rotate: [0, 360] }}
+                      transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                    >
+                      <Terminal className="h-5 w-5 text-success-400" />
+                    </motion.div>
+                    <span className="text-success-400 font-semibold">Function Logs</span>
+                  </div>
+                  {activationId && (
+                    <span className="text-xs text-gray-400 font-mono bg-gray-800/80 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-gray-700/50">
+                      {activationId}
+                    </span>
+                  )}
+                </div>
+
+                <div className="bg-black/90 backdrop-blur-sm rounded-2xl p-6 min-h-[500px] font-mono text-sm relative overflow-hidden border border-gray-800/50 shadow-inner">
+                  {!activationId && (
+                    <motion.div 
+                      className="text-center py-20"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.5 }}
                     >
                       <Terminal className="h-16 w-16 text-gray-600 mx-auto mb-4" />
+                      <p className="text-gray-400">
+                        Select an activation to view logs
+                      </p>
                     </motion.div>
-                    <p className="text-gray-400">
-                      Enter an activation ID to view logs
-                    </p>
-                  </motion.div>
-                )}
+                  )}
 
-                {isLoading && (
-                  <motion.div 
-                    className="text-center py-20"
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <Loader2 className="h-16 w-16 text-success-400 animate-spin mx-auto mb-4" />
-                    <motion.p 
-                      className="text-success-400"
-                      animate={{ opacity: [0.5, 1, 0.5] }}
-                      transition={{ duration: 2, repeat: Infinity }}
+                  {isLoading && (
+                    <motion.div 
+                      className="text-center py-20"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.3 }}
                     >
-                      Fetching logs...
-                    </motion.p>
-                  </motion.div>
-                )}
-
-                {typewriterText && (
-                  <div className="relative">
-                    <pre className="text-success-400 whitespace-pre-wrap break-words leading-relaxed">
-                      {typewriterText}
-                      <motion.span 
-                        className="text-success-300"
-                        animate={{ opacity: [0, 1, 0] }}
-                        transition={{ duration: 1, repeat: Infinity }}
+                      <Loader2 className="h-16 w-16 text-success-400 animate-spin mx-auto mb-4" />
+                      <motion.p 
+                        className="text-success-400"
+                        animate={{ opacity: [0.5, 1, 0.5] }}
+                        transition={{ duration: 2, repeat: Infinity }}
                       >
-                        ▋
-                      </motion.span>
-                    </pre>
-                  </div>
-                )}
+                        Fetching logs...
+                      </motion.p>
+                    </motion.div>
+                  )}
 
-                {/* Terminal-like decorative elements */}
-                <div className="absolute top-2 left-2 flex space-x-2">
-                  <motion.div 
-                    className="w-3 h-3 bg-error-500 rounded-full"
-                    animate={{ scale: [1, 1.2, 1] }}
-                    transition={{ duration: 2, repeat: Infinity, delay: 0 }}
-                  ></motion.div>
-                  <motion.div 
-                    className="w-3 h-3 bg-warning-500 rounded-full"
-                    animate={{ scale: [1, 1.2, 1] }}
-                    transition={{ duration: 2, repeat: Infinity, delay: 0.5 }}
-                  ></motion.div>
-                  <motion.div 
-                    className="w-3 h-3 bg-success-500 rounded-full"
-                    animate={{ scale: [1, 1.2, 1] }}
-                    transition={{ duration: 2, repeat: Infinity, delay: 1 }}
-                  ></motion.div>
+                  {activationId && selectedLogs[activationId] && (
+                    <div className="relative">
+                      <div className="flex items-center justify-end space-x-2 mb-4">
+                        <motion.button
+                          onClick={() => copyLogs(selectedLogs[activationId])}
+                          className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1 rounded-lg text-xs flex items-center space-x-1 transition-colors"
+                        >
+                          {copied ? (
+                            <CheckCircle className="h-3 w-3" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                          <span>{copied ? 'Copied!' : 'Copy'}</span>
+                        </motion.button>
+                        <motion.button
+                          onClick={() => downloadLogs(selectedLogs[activationId], activationId)}
+                          className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1 rounded-lg text-xs flex items-center space-x-1 transition-colors"
+                        >
+                          <Download className="h-3 w-3" />
+                          <span>Download</span>
+                        </motion.button>
+                      </div>
+                      
+                      <div className="text-success-400 whitespace-pre-wrap break-words leading-relaxed space-y-1">
+                        {formatLogDisplay(selectedLogs[activationId])}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
               </div>
             </div>
           </motion.div>

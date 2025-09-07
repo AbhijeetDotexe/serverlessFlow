@@ -32,7 +32,7 @@ function handler(event, context) {
     setResult(null);
 
     try {
-      const response = await fetch('/run', {
+      const response = await fetch('http://localhost:3000/run', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@clerk/clerk-react": "^5.46.1",
     "@monaco-editor/react": "^4.7.0",
     "framer-motion": "^12.23.12",
     "lucide-react": "^0.344.0",
